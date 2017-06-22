@@ -1,32 +1,19 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.parser.netty.performance;
 
+import io.moquette.parser.proto.Utils;
+import io.moquette.parser.proto.messages.*;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.mqtt.MqttMessage;
-import io.netty.handler.codec.mqtt.MqttMessageType;
-import io.netty.handler.codec.mqtt.MqttPublishMessage;
+import io.netty.util.AttributeKey;
 import org.HdrHistogram.Histogram;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static io.moquette.parser.netty.performance.NettyPublishReceiverHandler.payload2Str;
+import java.nio.ByteBuffer;
+
+import static io.moquette.parser.proto.messages.AbstractMessage.*;
 
 @ChannelHandler.Sharable
 class PublishReceiverHandler extends ChannelInboundHandlerAdapter {
@@ -34,39 +21,49 @@ class PublishReceiverHandler extends ChannelInboundHandlerAdapter {
     private static final Logger LOG = LoggerFactory.getLogger(PublishReceiverHandler.class);
     Histogram forthNetworkTime = new Histogram(5);
 
-    PublishReceiverHandler() {
+    public PublishReceiverHandler() {
     }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object message) {
-        MqttMessage msg = (MqttMessage) message;
-        MqttMessageType messageType = msg.fixedHeader().messageType();
+        AbstractMessage msg = (AbstractMessage) message;
 
         try {
-            switch (messageType) {
+            switch (msg.getMessageType()) {
                 case PUBLISH:
-                    LOG.info("Received a message of type {}", messageType);
-                    handlePublish((MqttPublishMessage) msg);
+                    LOG.info("Received a message of type {}", Utils.msgType2String(msg.getMessageType()));
+                    handlePublish((PublishMessage) msg);
                     return;
                 default:
-                    LOG.info("Received a message of type {}", messageType);
+                    LOG.info("Received a message of type {}", Utils.msgType2String(msg.getMessageType()));
             }
         } catch (Exception ex) {
             LOG.error("Bad error in processing the message", ex);
         }
     }
 
-    private void handlePublish(MqttPublishMessage msg) {
+    private void handlePublish(PublishMessage msg) {
         long start = System.nanoTime();
-        LOG.debug("push forward message the topic {}", msg.variableHeader().topicName());
-        LOG.debug("content <{}>", payload2Str(msg.payload()));
-        String decodedPayload = payload2Str(msg.payload());
+        LOG.debug("push forward message the topic {}", msg.getTopicName());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("content <{}>", payload2Str(msg.getPayload()));
+        }
+        String decodedPayload = payload2Str(msg.getPayload());
         long sentTime = Long.parseLong(decodedPayload.split("-")[1]);
         forthNetworkTime.recordValue(start - sentTime);
 
         long stop = System.nanoTime();
-        LOG.info("Request processed in {} ns, matching {}", stop - start, payload2Str(msg.payload()));
+        LOG.info("Request processed in {} ns, matching {}", stop - start, payload2Str(msg.getPayload()));
     }
+
+    static String payload2Str(ByteBuffer content) {
+        byte[] b = new byte[content.remaining()];
+        content.mark();
+        content.get(b);
+        content.reset();
+        return new String(b);
+    }
+
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {

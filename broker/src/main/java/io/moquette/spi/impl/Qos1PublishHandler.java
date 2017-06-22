@@ -1,96 +1,81 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.spi.impl;
 
-import io.moquette.server.ConnectionDescriptorStore;
+import io.moquette.parser.proto.messages.PubAckMessage;
+import io.moquette.parser.proto.messages.PublishMessage;
+import io.moquette.server.ConnectionDescriptor;
 import io.moquette.server.netty.NettyUtils;
 import io.moquette.spi.IMessagesStore;
+import io.moquette.spi.MessageGUID;
 import io.moquette.spi.impl.subscriptions.Subscription;
 import io.moquette.spi.impl.subscriptions.SubscriptionsStore;
-import io.moquette.spi.impl.subscriptions.Topic;
 import io.moquette.spi.security.IAuthorizator;
 import io.netty.channel.Channel;
-import io.netty.handler.codec.mqtt.MqttFixedHeader;
-import io.netty.handler.codec.mqtt.MqttMessageType;
-import io.netty.handler.codec.mqtt.MqttPubAckMessage;
-import io.netty.handler.codec.mqtt.MqttPublishMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
+
 import static io.moquette.spi.impl.ProtocolProcessor.asStoredMessage;
-import static io.netty.handler.codec.mqtt.MqttMessageIdVariableHeader.from;
-import static io.netty.handler.codec.mqtt.MqttQoS.AT_MOST_ONCE;
 
-class Qos1PublishHandler extends QosPublishHandler {
-
+class Qos1PublishHandler {
     private static final Logger LOG = LoggerFactory.getLogger(Qos1PublishHandler.class);
 
+    private final IAuthorizator m_authorizator;
     private final SubscriptionsStore subscriptions;
     private final IMessagesStore m_messagesStore;
     private final BrokerInterceptor m_interceptor;
-    private final ConnectionDescriptorStore connectionDescriptors;
+    private final ConcurrentMap<String, ConnectionDescriptor> connectionDescriptors;
+    private final String brokerPort;
     private final MessagesPublisher publisher;
 
-    Qos1PublishHandler(IAuthorizator authorizator, SubscriptionsStore subscriptions, IMessagesStore messagesStore,
-            BrokerInterceptor interceptor, ConnectionDescriptorStore connectionDescriptors, String brokerPort,
-            MessagesPublisher messagesPublisher) {
-        super(authorizator);
+    public Qos1PublishHandler(IAuthorizator authorizator, SubscriptionsStore subscriptions,
+                              IMessagesStore messagesStore, BrokerInterceptor interceptor,
+                              ConcurrentMap<String, ConnectionDescriptor> connectionDescriptors,
+                              String brokerPort, MessagesPublisher messagesPublisher) {
+        this.m_authorizator = authorizator;
         this.subscriptions = subscriptions;
         this.m_messagesStore = messagesStore;
         this.m_interceptor = interceptor;
         this.connectionDescriptors = connectionDescriptors;
+        this.brokerPort = brokerPort;
         this.publisher = messagesPublisher;
     }
 
-    void receivedPublishQos1(Channel channel, MqttPublishMessage msg) {
-        // verify if topic can be write
-        final Topic topic = new Topic(msg.variableHeader().topicName());
+    void receivedPublishQos1(Channel channel, PublishMessage msg) {
+        //verify if topic can be write
+        final String topic = msg.getTopicName();
         if (checkWriteOnTopic(topic, channel)) {
             return;
         }
 
-        final int messageID = msg.variableHeader().messageId();
-
-        // route message to subscribers
+        //route message to subscribers
         IMessagesStore.StoredMessage toStoreMsg = asStoredMessage(msg);
         String clientID = NettyUtils.clientID(channel);
         toStoreMsg.setClientID(clientID);
 
+        LOG.debug("publish2Subscribers_qos1 republishing to existing subscribers that matches the topic {}", topic);
         if (LOG.isTraceEnabled()) {
-            LOG.trace("Sending publish message to subscribers. ClientId={}, topic={}, messageId={}, payload={}, " +
-                "subscriptionTree={}", clientID, topic, messageID, DebugUtils.payload2Str(toStoreMsg.getMessage()),
-                subscriptions.dumpTree());
-        } else {
-            LOG.info("Sending publish message to subscribers. ClientId={}, topic={}, messageId={}", clientID, topic,
-                messageID);
+            LOG.trace("content <{}>", DebugUtils.payload2Str(toStoreMsg.getMessage()));
+            LOG.trace("subscription tree {}", subscriptions.dumpTree());
         }
-
         List<Subscription> topicMatchingSubscriptions = subscriptions.matches(topic);
         this.publisher.publish2Subscribers(toStoreMsg, topicMatchingSubscriptions);
 
-        sendPubAck(clientID, messageID);
+        //send PUBACK
+        final Integer messageID = msg.getMessageID();
+        if (msg.isLocal()) {
+            sendPubAck(clientID, messageID);
+        }
+        LOG.info("server {} replying with PubAck to MSG ID {}", brokerPort, messageID);
 
-        if (msg.fixedHeader().isRetain()) {
-            if (!msg.payload().isReadable()) {
+        if (msg.isRetainFlag()) {
+            if (!msg.getPayload().hasRemaining()) {
                 m_messagesStore.cleanRetained(topic);
             } else {
-                // before wasn't stored
-                //MessageGUID guid = m_messagesStore.storePublishForFuture(toStoreMsg);
-                m_messagesStore.storeRetained(topic, toStoreMsg.getGuid());
+                //before wasn't stored
+                MessageGUID guid = m_messagesStore.storePublishForFuture(toStoreMsg);
+                m_messagesStore.storeRetained(topic, guid);
             }
         }
 
@@ -98,23 +83,31 @@ class Qos1PublishHandler extends QosPublishHandler {
         m_interceptor.notifyTopicPublished(msg, clientID, username);
     }
 
+    boolean checkWriteOnTopic(String topic, Channel channel) {
+        String clientID = NettyUtils.clientID(channel);
+        String username = NettyUtils.userName(channel);
+        if (!m_authorizator.canWrite(topic, username, clientID)) {
+            LOG.debug("topic {} doesn't have write credentials", topic);
+            return true;
+        }
+        return false;
+    }
+
     private void sendPubAck(String clientId, int messageID) {
         LOG.trace("sendPubAck invoked");
-        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBACK, false, AT_MOST_ONCE, false, 0);
-        MqttPubAckMessage pubAckMessage = new MqttPubAckMessage(fixedHeader, from(messageID));
+        PubAckMessage pubAckMessage = new PubAckMessage();
+        pubAckMessage.setMessageID(messageID);
 
         try {
             if (connectionDescriptors == null) {
-                throw new RuntimeException("Internal bad error, found connectionDescriptors to null while it should " +
-                    "be initialized, somewhere it's overwritten!!");
+                throw new RuntimeException("Internal bad error, found connectionDescriptors to null while it should be initialized, somewhere it's overwritten!!");
             }
             LOG.debug("clientIDs are {}", connectionDescriptors);
-            if (!connectionDescriptors.isConnected(clientId)) {
-                throw new RuntimeException(String.format("Can't find a ConnectionDescriptor for client %s in cache %s",
-                    clientId, connectionDescriptors));
+            if (connectionDescriptors.get(clientId) == null) {
+                throw new RuntimeException(String.format("Can't find a ConnectionDescriptor for client %s in cache %s", clientId, connectionDescriptors));
             }
-            connectionDescriptors.sendMessage(pubAckMessage, messageID, clientId);
-        } catch (Throwable t) {
+            connectionDescriptors.get(clientId).channel.writeAndFlush(pubAckMessage);
+        } catch(Throwable t) {
             LOG.error(null, t);
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The original author or authors
+ * Copyright (c) 2012-2017 The original author or authorsgetRockQuestions()
  * ------------------------------------------------------
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -13,10 +13,10 @@
  *
  * You may elect to redistribute this code under either of these licenses.
  */
-
 package io.moquette.server.netty;
 
 import io.moquette.server.Constants;
+import io.moquette.spi.impl.ProtocolProcessor;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.Attribute;
@@ -24,8 +24,10 @@ import io.netty.util.AttributeKey;
 
 /**
  * Some Netty's channels utilities.
+ *
+ * @author andrea
  */
-public final class NettyUtils {
+public class NettyUtils {
 
     public static final String ATTR_USERNAME = "username";
     public static final String ATTR_SESSION_STOLEN = "sessionStolen";
@@ -67,8 +69,5 @@ public final class NettyUtils {
 
     public static String userName(Channel channel) {
         return (String) channel.attr(NettyUtils.ATTR_KEY_USERNAME).get();
-    }
-
-    private NettyUtils() {
     }
 }

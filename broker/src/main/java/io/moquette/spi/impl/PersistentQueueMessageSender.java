@@ -1,60 +1,54 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.spi.impl;
 
-import io.moquette.server.ConnectionDescriptorStore;
+import io.moquette.parser.proto.messages.PublishMessage;
+import io.moquette.server.ConnectionDescriptor;
 import io.moquette.spi.ClientSession;
-import io.netty.handler.codec.mqtt.MqttPublishMessage;
-import io.netty.handler.codec.mqtt.MqttQoS;
+import io.netty.channel.Channel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import static io.moquette.spi.impl.ProtocolProcessor.asStoredMessage;
-import static io.netty.handler.codec.mqtt.MqttQoS.AT_MOST_ONCE;
+
+import java.util.concurrent.ConcurrentMap;
+
+import static io.moquette.parser.proto.messages.AbstractMessage.QOSType.MOST_ONE;
 
 class PersistentQueueMessageSender {
 
     private static final Logger LOG = LoggerFactory.getLogger(PersistentQueueMessageSender.class);
-    private final ConnectionDescriptorStore connectionDescriptorStore;
+    private final ConcurrentMap<String, ConnectionDescriptor> connectionDescriptors;
 
-    PersistentQueueMessageSender(ConnectionDescriptorStore connectionDescriptorStore) {
-        this.connectionDescriptorStore = connectionDescriptorStore;
+    public PersistentQueueMessageSender(ConcurrentMap<String, ConnectionDescriptor> connectionDescriptors) {
+        this.connectionDescriptors = connectionDescriptors;
     }
 
-    void sendPublish(ClientSession clientsession, MqttPublishMessage pubMessage) {
+    void sendPublish(ClientSession clientsession, PublishMessage pubMessage) {
         String clientId = clientsession.clientID;
-        final int messageId = pubMessage.variableHeader().messageId();
-        final String topicName = pubMessage.variableHeader().topicName();
+        LOG.info("send publish message to <{}> on topic <{}>", clientId, pubMessage.getTopicName());
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Sending PUBLISH message. MessageId={}, CId={}, topic={}, qos={}, payload={}", messageId,
-                clientId, topicName, DebugUtils.payload2Str(pubMessage.payload()));
-        } else {
-            LOG.info("Sending PUBLISH message. MessageId={}, CId={}, topic={}", messageId, clientId, topicName);
+            LOG.debug("directSend invoked clientId <{}> on topic <{}> QoS {} retained {} messageID {}",
+                    clientId, pubMessage.getTopicName(), pubMessage.getQos(), false, pubMessage.getMessageID());
+            LOG.debug("content <{}>", DebugUtils.payload2Str(pubMessage.getPayload()));
         }
 
-        boolean messageDelivered = connectionDescriptorStore.sendMessage(pubMessage, messageId, clientId);
-
-        MqttQoS qos = pubMessage.fixedHeader().qosLevel();
-        if (!messageDelivered && qos != AT_MOST_ONCE && !clientsession.isCleanSession()) {
-            LOG.warn("PUBLISH message could not be delivered. It will be stored. MessageId={}, CId={}, topic={}, "
-                    + "qos={}, cleanSession={}", messageId, clientId, topicName, qos, false);
-            clientsession.enqueue(asStoredMessage(pubMessage));
-        } else {
-            LOG.warn("PUBLISH message could not be delivered. It will be discarded. MessageId={}, CId={}, topic={}, " +
-                "qos={}, cleanSession={}", messageId, clientId, topicName, qos, true);
+        if (connectionDescriptors == null) {
+            throw new RuntimeException("Internal bad error, found connectionDescriptors to null while it should be " +
+                    "initialized, somewhere it's overwritten!!");
+        }
+        if (connectionDescriptors.get(clientId) == null) {
+            //TODO while we were publishing to the target client, that client disconnected,
+            // could happen is not an error HANDLE IT
+            throw new RuntimeException(String.format("Can't find a ConnectionDescriptor for client <%s> in cache <%s>",
+                    clientId, connectionDescriptors));
+        }
+        Channel channel = connectionDescriptors.get(clientId).channel;
+        LOG.trace("Session for clientId {}", clientId);
+        if (channel.isWritable()) {
+            LOG.debug("channel is writable");
+            //if channel is writable don't enqueue
+            channel.writeAndFlush(pubMessage);
+        } else if (pubMessage.getQos() != MOST_ONE) {
+            //enqueue to the client session
+            LOG.debug("enqueue to client session");
+            clientsession.enqueue(pubMessage);
         }
     }
 }

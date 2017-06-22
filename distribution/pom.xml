@@ -6,7 +6,7 @@
         <!--<relativePath>../pom.xml</relativePath>-->
         <artifactId>moquette-parent</artifactId>
         <groupId>io.moquette</groupId>
-        <version>0.10-SNAPSHOT</version>
+        <version>0.9-SNAPSHOT-1</version>
     </parent>
 
     <artifactId>distribution</artifactId>
@@ -18,6 +18,12 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>moquette-broker</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>moquette-netty-parser</artifactId>
             <version>${project.version}</version>
         </dependency>
 

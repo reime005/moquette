@@ -1,31 +1,16 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.spi.impl;
 
+
+import io.moquette.parser.proto.messages.AbstractMessage;
+import io.moquette.parser.proto.messages.PublishMessage;
 import io.moquette.spi.ClientSession;
 import io.moquette.spi.IMessagesStore;
-import io.netty.buffer.ByteBuf;
-import io.netty.handler.codec.mqtt.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.ArrayList;
+
+import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
 
 class InternalRepublisher {
 
@@ -39,63 +24,49 @@ class InternalRepublisher {
 
     void publishRetained(ClientSession targetSession, Collection<IMessagesStore.StoredMessage> messages) {
         for (IMessagesStore.StoredMessage storedMsg : messages) {
-            // fire as retained the message
-            MqttPublishMessage publishMsg = retainedPublish(storedMsg);
-            if (storedMsg.getQos() != MqttQoS.AT_MOST_ONCE) {
-                LOG.debug("Adding message to inflight zone. ClientId={}, topic={}", targetSession.clientID,
-                    storedMsg.getTopic());
-                int packetID = targetSession.inFlightAckWaiting(storedMsg.getGuid());
-
-                // set the PacketIdentifier only for QoS > 0
-                publishMsg = retainedPublish(storedMsg, packetID);
+            //fire as retained the message
+            Integer packetID = storedMsg.getQos() == AbstractMessage.QOSType.MOST_ONE ? null : targetSession.nextPacketId();
+            if (packetID != null) {
+                LOG.trace("Adding to inflight <{}>", packetID);
+                targetSession.inFlightAckWaiting(storedMsg.getGuid(), packetID);
             }
-
+            PublishMessage publishMsg = retainedPublish(storedMsg);
+            //set the PacketIdentifier only for QoS > 0
+            if (publishMsg.getQos() != AbstractMessage.QOSType.MOST_ONE) {
+                publishMsg.setMessageID(packetID);
+            }
             this.messageSender.sendPublish(targetSession, publishMsg);
         }
     }
 
-    void publishStored(ClientSession clientSession, BlockingQueue<IMessagesStore.StoredMessage> publishedEvents) {
-        List<IMessagesStore.StoredMessage> storedPublishes = new ArrayList<>();
-        publishedEvents.drainTo(storedPublishes);
-
-        for (IMessagesStore.StoredMessage pubEvt : storedPublishes) {
-            // put in flight zone
-            LOG.debug("Adding message ot inflight zone. ClientId={}, guid={}, topic={}", clientSession.clientID,
-                pubEvt.getGuid(), pubEvt.getTopic());
-            int messageId = clientSession.inFlightAckWaiting(pubEvt.getGuid());
-            MqttPublishMessage publishMsg = notRetainedPublish(pubEvt);
-            // set the PacketIdentifier only for QoS > 0
-            if (publishMsg.fixedHeader().qosLevel() != MqttQoS.AT_MOST_ONCE) {
-                publishMsg = notRetainedPublish(pubEvt, messageId);
+    void publishStored(ClientSession clientSession, List<IMessagesStore.StoredMessage> publishedEvents) {
+        for (IMessagesStore.StoredMessage pubEvt : publishedEvents) {
+            //put in flight zone
+            LOG.trace("Adding to inflight <{}>", pubEvt.getMessageID());
+            clientSession.inFlightAckWaiting(pubEvt.getGuid(), pubEvt.getMessageID());
+            PublishMessage publishMsg = notRetainedPublish(pubEvt);
+            //set the PacketIdentifier only for QoS > 0
+            if (publishMsg.getQos() != AbstractMessage.QOSType.MOST_ONE) {
+                publishMsg.setMessageID(pubEvt.getMessageID());
             }
             this.messageSender.sendPublish(clientSession, publishMsg);
         }
     }
 
-    private MqttPublishMessage notRetainedPublish(IMessagesStore.StoredMessage storedMessage, Integer messageID) {
-        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), false,
-            messageID);
+    private PublishMessage notRetainedPublish(IMessagesStore.StoredMessage storedMessage) {
+        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), false);
     }
 
-    private MqttPublishMessage notRetainedPublish(IMessagesStore.StoredMessage storedMessage) {
-        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), false,
-            0);
+    private PublishMessage retainedPublish(IMessagesStore.StoredMessage storedMessage) {
+        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), true);
     }
 
-    private MqttPublishMessage retainedPublish(IMessagesStore.StoredMessage storedMessage) {
-        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), true,
-            0);
-    }
-
-    private MqttPublishMessage retainedPublish(IMessagesStore.StoredMessage storedMessage, Integer packetID) {
-        return createPublishForQos(storedMessage.getTopic(), storedMessage.getQos(), storedMessage.getMessage(), true,
-            packetID);
-    }
-
-    public static MqttPublishMessage createPublishForQos(String topic, MqttQoS qos, ByteBuf message, boolean retained,
-            int messageId) {
-        MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBLISH, false, qos, retained, 0);
-        MqttPublishVariableHeader varHeader = new MqttPublishVariableHeader(topic, messageId);
-        return new MqttPublishMessage(fixedHeader, varHeader, message);
+    private PublishMessage createPublishForQos(String topic, AbstractMessage.QOSType qos, ByteBuffer message, boolean retained) {
+        PublishMessage pubMessage = new PublishMessage();
+        pubMessage.setRetainFlag(retained);
+        pubMessage.setTopicName(topic);
+        pubMessage.setQos(qos);
+        pubMessage.setPayload(message);
+        return pubMessage;
     }
 }

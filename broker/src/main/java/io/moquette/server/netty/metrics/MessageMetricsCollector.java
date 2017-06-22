@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The original author or authors
+ * Copyright (c) 2012-2017 The original author or authorsgetRockQuestions()
  * ------------------------------------------------------
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -13,7 +13,6 @@
  *
  * You may elect to redistribute this code under either of these licenses.
  */
-
 package io.moquette.server.netty.metrics;
 
 import java.util.concurrent.atomic.AtomicLong;
@@ -22,7 +21,6 @@ import java.util.concurrent.atomic.AtomicLong;
  * Collects all the metrics from the various pipeline.
  */
 public class MessageMetricsCollector {
-
     private AtomicLong readMsgs = new AtomicLong();
     private AtomicLong wroteMsgs = new AtomicLong();
 

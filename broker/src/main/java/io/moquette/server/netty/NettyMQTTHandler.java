@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The original author or authors
+ * Copyright (c) 2012-2017 The original author or authorsgetRockQuestions()
  * ------------------------------------------------------
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -13,21 +13,30 @@
  *
  * You may elect to redistribute this code under either of these licenses.
  */
-
 package io.moquette.server.netty;
 
+import io.moquette.parser.proto.Utils;
+import io.moquette.parser.proto.messages.*;
 import io.moquette.spi.impl.ProtocolProcessor;
+import static io.moquette.parser.proto.messages.AbstractMessage.*;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.mqtt.*;
+
+import io.netty.handler.codec.CorruptedFrameException;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import static io.netty.handler.codec.mqtt.MqttQoS.AT_MOST_ONCE;
 
+import java.io.IOException;
+
+/**
+ *
+ * @author andrea
+ */
 @Sharable
 public class NettyMQTTHandler extends ChannelInboundHandlerAdapter {
-
+    
     private static final Logger LOG = LoggerFactory.getLogger(NettyMQTTHandler.class);
     private final ProtocolProcessor m_processor;
 
@@ -37,63 +46,52 @@ public class NettyMQTTHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object message) {
-        MqttMessage msg = (MqttMessage) message;
-        MqttMessageType messageType = msg.fixedHeader().messageType();
-        LOG.debug("Processing MQTT message, type={}", messageType);
+        AbstractMessage msg = (AbstractMessage) message;
+        LOG.info("Received a message of type {}", Utils.msgType2String(msg.getMessageType()));
         try {
-            switch (messageType) {
+            switch (msg.getMessageType()) {
                 case CONNECT:
-                    m_processor.processConnect(ctx.channel(), (MqttConnectMessage) msg);
+                    m_processor.processConnect(ctx.channel(), (ConnectMessage) msg);
                     break;
                 case SUBSCRIBE:
-                    m_processor.processSubscribe(ctx.channel(), (MqttSubscribeMessage) msg);
+                    m_processor.processSubscribe(ctx.channel(), (SubscribeMessage) msg);
                     break;
                 case UNSUBSCRIBE:
-                    m_processor.processUnsubscribe(ctx.channel(), (MqttUnsubscribeMessage) msg);
+                    m_processor.processUnsubscribe(ctx.channel(), (UnsubscribeMessage) msg);
                     break;
                 case PUBLISH:
-                    m_processor.processPublish(ctx.channel(), (MqttPublishMessage) msg);
+                    m_processor.processPublish(ctx.channel(), (PublishMessage) msg);
                     break;
                 case PUBREC:
-                    m_processor.processPubRec(ctx.channel(), msg);
+                    m_processor.processPubRec(ctx.channel(), (PubRecMessage) msg);
                     break;
                 case PUBCOMP:
-                    m_processor.processPubComp(ctx.channel(), msg);
+                    m_processor.processPubComp(ctx.channel(), (PubCompMessage) msg);
                     break;
                 case PUBREL:
-                    m_processor.processPubRel(ctx.channel(), msg);
+                    m_processor.processPubRel(ctx.channel(), (PubRelMessage) msg);
                     break;
                 case DISCONNECT:
                     m_processor.processDisconnect(ctx.channel());
                     break;
                 case PUBACK:
-                    m_processor.processPubAck(ctx.channel(), (MqttPubAckMessage) msg);
+                    m_processor.processPubAck(ctx.channel(), (PubAckMessage) msg);
                     break;
                 case PINGREQ:
-                    MqttFixedHeader pingHeader = new MqttFixedHeader(
-                            MqttMessageType.PINGRESP,
-                            false,
-                            AT_MOST_ONCE,
-                            false,
-                            0);
-                    MqttMessage pingResp = new MqttMessage(pingHeader);
+                    PingRespMessage pingResp = new PingRespMessage();
                     ctx.writeAndFlush(pingResp);
                     break;
-                default:
-                    LOG.error("Unkonwn MessageType:{}", messageType);
-                    break;
             }
-        } catch (Throwable ex) {
-            LOG.error("Exception was caught while processing MQTT message, " + ex.getCause(), ex);
+        } catch (Exception ex) {
+            LOG.error("Bad error in processing the message", ex);
             ctx.fireExceptionCaught(ex);
         }
     }
-
+    
     @Override
     public void channelInactive(ChannelHandlerContext ctx) throws Exception {
         String clientID = NettyUtils.clientID(ctx.channel());
         if (clientID != null && !clientID.isEmpty()) {
-            LOG.info("Notifying connection lost event. MqttClientId = {}.", clientID);
             m_processor.processConnectionLost(clientID, ctx.channel());
         }
         ctx.close();
@@ -101,12 +99,14 @@ public class NettyMQTTHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        LOG.error(
-                "An unexpected exception was caught while processing MQTT message. "
-                + "Closing Netty channel. MqttClientId = {}, cause = {}, errorMessage = {}.",
-                NettyUtils.clientID(ctx.channel()),
-                cause.getCause(),
-                cause.getMessage());
+        if (cause instanceof CorruptedFrameException) {
+            //something goes bad with decoding
+            LOG.warn("Error decoding a packet, probably a bad formatted packet, message: " + cause.getMessage());
+        } else if (cause instanceof IOException && "Connection reset by peer".equals(cause.getMessage())) {
+            LOG.warn("Network connection closed abruptly");
+        } else {
+            LOG.error("Ugly error on networking", cause);
+        }
         ctx.close();
     }
 

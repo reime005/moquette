@@ -1,32 +1,20 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.parser.netty.performance;
 
+
+import io.moquette.parser.netty.MQTTDecoder;
+import io.moquette.parser.netty.MQTTEncoder;
+import io.moquette.parser.proto.messages.AbstractMessage;
+import io.moquette.parser.proto.messages.PublishMessage;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.mqtt.*;
 import org.eclipse.jetty.toolchain.perf.PlatformTimer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.nio.ByteBuffer;
 
 class PublishBomber {
 
@@ -46,8 +34,8 @@ class PublishBomber {
                 @Override
                 public void initChannel(SocketChannel ch) throws Exception {
                     ChannelPipeline pipeline = ch.pipeline();
-                    pipeline.addLast("decoder", new MqttDecoder());
-                    pipeline.addLast("encoder", MqttEncoder.INSTANCE);
+                    pipeline.addLast("decoder", new MQTTDecoder());
+                    pipeline.addLast("encoder", new MQTTEncoder());
                 }
             });
 
@@ -59,7 +47,7 @@ class PublishBomber {
         }
     }
 
-    private void sendMessage(MqttMessage msg) {
+    private void sendMessage(AbstractMessage msg) {
         try {
             channel.writeAndFlush(msg).await();
         } catch (InterruptedException e) {
@@ -67,8 +55,9 @@ class PublishBomber {
         }
     }
 
+
     public void publishLoop(int messagesPerSecond, int numToSend) {
-        long pauseMicroseconds = (int) ((1.0 / messagesPerSecond) * 1000 * 1000);
+        long pauseMicroseconds = (int)((1.0 / messagesPerSecond) * 1000 * 1000);
         LOG.warn("PUB: Pause over the each message sent {} microsecs", pauseMicroseconds);
 
         LOG.info("PUB: publishing..");
@@ -76,16 +65,15 @@ class PublishBomber {
 
         //initialize the timer
         PlatformTimer timer = PlatformTimer.detect();
-        for (int i = 0; i < numToSend; i++) {
+        for (int i=0; i < numToSend; i++) {
             long nanos = System.nanoTime();
+
+            PublishMessage pubMessage = new PublishMessage();
+            pubMessage.setQos(AbstractMessage.QOSType.MOST_ONE);
+            pubMessage.setTopicName("/topic");
             byte[] rawContent = ("Hello world!!-" + nanos).getBytes();
-            ByteBuf payload = Unpooled.copiedBuffer(rawContent);
-
-            MqttFixedHeader fixedHeader = new MqttFixedHeader(MqttMessageType.PUBLISH, false, MqttQoS.AT_MOST_ONCE,
-                    false, 0);
-            MqttPublishVariableHeader varHeader = new MqttPublishVariableHeader("/topic", 0);
-            MqttPublishMessage pubMessage = new MqttPublishMessage(fixedHeader, varHeader, payload);
-
+            ByteBuffer payload = (ByteBuffer) ByteBuffer.allocate(rawContent.length).put(rawContent).flip();
+            pubMessage.setPayload(payload);
             sendMessage(pubMessage);
             timer.sleep(pauseMicroseconds);
         }

@@ -26,6 +26,7 @@ import org.ops4j.pax.exam.Option;
 import org.ops4j.pax.exam.junit.PaxExam;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceReference;
 
 import javax.inject.Inject;
 
@@ -37,7 +38,7 @@ import javax.inject.Inject;
 public class MoquetteOsgiTest {
     @Inject
     private BundleContext bundleContext;
-
+ 
     @Configuration
     public Option[] config() {
 

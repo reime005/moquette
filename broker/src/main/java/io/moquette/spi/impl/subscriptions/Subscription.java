@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The original author or authors
+ * Copyright (c) 2012-2017 The original author or authorsgetRockQuestions()
  * ------------------------------------------------------
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -13,25 +13,27 @@
  *
  * You may elect to redistribute this code under either of these licenses.
  */
-
 package io.moquette.spi.impl.subscriptions;
 
-import io.moquette.spi.ISessionsStore.ClientTopicCouple;
-import io.netty.handler.codec.mqtt.MqttQoS;
 import java.io.Serializable;
+import io.moquette.parser.proto.messages.AbstractMessage.QOSType;
+import io.moquette.spi.ISessionsStore.ClientTopicCouple;
 
 /**
- * Maintain the information about which Topic a certain ClientID is subscribed and at which QoS
+ * Maintain the information about which Topic a certain ClientID is subscribed 
+ * and at which QoS
+ * 
+ * 
+ * @author andrea
  */
 public final class Subscription implements Serializable {
-
-    private static final long serialVersionUID = -3383457629635732794L;
-    final MqttQoS requestedQos; // max QoS acceptable
+    
+    final QOSType requestedQos; //max QoS acceptable
     final String clientId;
-    final Topic topicFilter;
+    final String topicFilter;
     final boolean active;
-
-    public Subscription(String clientId, Topic topicFilter, MqttQoS requestedQos) {
+    
+    public Subscription(String clientId, String topicFilter, QOSType requestedQos) {
         this.requestedQos = requestedQos;
         this.clientId = clientId;
         this.topicFilter = topicFilter;
@@ -49,30 +51,24 @@ public final class Subscription implements Serializable {
         return clientId;
     }
 
-    public MqttQoS getRequestedQos() {
+    public QOSType getRequestedQos() {
         return requestedQos;
     }
 
-    public Topic getTopicFilter() {
+    public String getTopicFilter() {
         return topicFilter;
-    }
-
-    public boolean isActive() {
-        return active;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o)
-            return true;
-        if (o == null || getClass() != o.getClass())
-            return false;
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
 
         Subscription that = (Subscription) o;
 
-        if (clientId != null ? !clientId.equals(that.clientId) : that.clientId != null)
-            return false;
+        if (clientId != null ? !clientId.equals(that.clientId) : that.clientId != null) return false;
         return !(topicFilter != null ? !topicFilter.equals(that.topicFilter) : that.topicFilter != null);
+
     }
 
     @Override
@@ -84,12 +80,7 @@ public final class Subscription implements Serializable {
 
     @Override
     public String toString() {
-        return String.format(
-                "[filter:%s, cliID: %s, qos: %s, active: %s]",
-                this.topicFilter,
-                this.clientId,
-                this.requestedQos,
-                this.active);
+        return String.format("[filter:%s, cliID: %s, qos: %s, active: %s]", this.topicFilter, this.clientId, this.requestedQos, this.active);
     }
 
     @Override

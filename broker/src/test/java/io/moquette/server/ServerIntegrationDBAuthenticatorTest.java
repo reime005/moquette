@@ -1,19 +1,3 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.server;
 
 import io.moquette.BrokerConstants;
@@ -26,15 +10,19 @@ import org.eclipse.paho.client.mqttv3.persist.MqttDefaultFilePersistence;
 import org.junit.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.util.Properties;
+
 import static org.junit.Assert.assertTrue;
 
+/**
+ * Created by mackristof on 13/05/2016.
+ */
 public class ServerIntegrationDBAuthenticatorTest {
-
     private static final Logger LOG = LoggerFactory.getLogger(ServerIntegrationDBAuthenticatorTest.class);
 
     static MqttClientPersistence s_dataStore;
@@ -46,6 +34,8 @@ public class ServerIntegrationDBAuthenticatorTest {
     IMqttClient m_publisher;
     MessageCollector m_messagesCollector;
     IConfig m_config;
+
+
 
     @BeforeClass
     public static void beforeTests() throws NoSuchAlgorithmException, SQLException, ClassNotFoundException {
@@ -63,8 +53,10 @@ public class ServerIntegrationDBAuthenticatorTest {
         m_server.startServer(m_config);
     }
 
+
     private void stopServer() {
         m_server.stopServer();
+        IntegrationUtils.cleanPersistenceFile(m_config);
     }
 
     private Properties addDBAuthenticatorConf(Properties properties) {
@@ -78,6 +70,9 @@ public class ServerIntegrationDBAuthenticatorTest {
 
     @Before
     public void setUp() throws Exception {
+        String dbPath = IntegrationUtils.localMapDBPath();
+        IntegrationUtils.cleanPersistenceFile(dbPath);
+
         startServer();
 
         m_client = new MqttClient("tcp://localhost:1883", "TestClient", s_dataStore);
@@ -101,7 +96,7 @@ public class ServerIntegrationDBAuthenticatorTest {
     }
 
     @AfterClass
-    public static void shutdown() {
+    public static void shutdown(){
         dbAuthenticatorTest.teardown();
     }
 
@@ -116,8 +111,9 @@ public class ServerIntegrationDBAuthenticatorTest {
         assertTrue(true);
     }
 
+
     @Test
-    public void connectWithWrongCredentials() {
+    public void connectWithWrongCredentials()  {
         LOG.info("*** connectWithWrongCredentials ***");
         try {
             m_client = new MqttClient("tcp://localhost:1883", "Publisher", s_pubDataStore);
@@ -125,16 +121,18 @@ public class ServerIntegrationDBAuthenticatorTest {
             options.setUserName("dbuser");
             options.setPassword("wrongPassword".toCharArray());
             m_client.connect(options);
-        } catch (MqttException e) {
+        } catch (MqttException e){
             if (e instanceof MqttSecurityException) {
                 assertTrue(true);
                 return;
             } else {
-                assertTrue(e.getMessage(), false);
+                assertTrue(e.getMessage(),false);
                 return;
             }
         }
-        assertTrue("must not be connected. cause : wrong password given to client", false);
+        assertTrue("must not be connected. cause : wrong password given to client",false);
+
     }
+
 
 }

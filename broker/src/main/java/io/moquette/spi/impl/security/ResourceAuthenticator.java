@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The original author or authors
+ * Copyright (c) 2012-2017 The original author or authorsgetRockQuestions()
  * ------------------------------------------------------
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -13,14 +13,15 @@
  *
  * You may elect to redistribute this code under either of these licenses.
  */
-
 package io.moquette.spi.impl.security;
 
 import io.moquette.server.config.IResourceLoader;
 import io.moquette.spi.security.IAuthenticator;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
@@ -31,27 +32,27 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Load user credentials from a text resource. Each line of the file is formatted as
- * "[username]:[sha256(password)]". The username mustn't contains : char.
+ * Load user credentials from a text resource.
+ * Each line of the file is formatted as "[username]:[sha256(password)]". The username mustn't contains : char.
  *
  * To encode your password from command line on Linux systems, you could use:
- *
  * <pre>
  *     echo -n "yourpassword" | sha256sum
  * </pre>
+ * NB -n is important because echo append a newline by default at the of string. -n avoid this behaviour.
  *
- * NB -n is important because echo append a newline by default at the of string. -n avoid this
- * behaviour.
+ * @author andrea
  */
 public class ResourceAuthenticator implements IAuthenticator {
 
     protected static final Logger LOG = LoggerFactory.getLogger(ResourceAuthenticator.class);
 
     private Map<String, String> m_identities = new HashMap<>();
+    private MessageDigest m_digest;
 
     public ResourceAuthenticator(IResourceLoader resourceLoader, String resourceName) {
         try {
-            MessageDigest.getInstance("SHA-256");
+            this.m_digest = MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException nsaex) {
             LOG.error("Can't find SHA-256 for password encoding", nsaex);
             throw new RuntimeException(nsaex);
@@ -63,23 +64,24 @@ public class ResourceAuthenticator implements IAuthenticator {
             reader = resourceLoader.loadResource(resourceName);
             if (reader == null) {
                 LOG.warn(String.format("Parsing not existing %s %s", resourceLoader.getName(), resourceName));
-            } else {
+            }
+            else {
                 parse(reader);
             }
-        } catch (IResourceLoader.ResourceIsDirectoryException e) {
+        }
+        catch (IResourceLoader.ResourceIsDirectoryException e) {
             LOG.warn(String.format("Trying to parse directory %s", resourceName));
-        } catch (ParseException pex) {
-            LOG.warn(
-                    String.format("Format error in parsing password %s %s", resourceLoader.getName(), resourceName),
-                    pex);
+        }
+        catch (ParseException pex) {
+            LOG.warn(String.format("Format error in parsing password %s %s", resourceLoader.getName(), resourceName), pex);
         }
     }
-
+    
     private void parse(Reader reader) throws ParseException {
         if (reader == null) {
             return;
         }
-
+        
         BufferedReader br = new BufferedReader(reader);
         String line;
         try {
@@ -87,23 +89,23 @@ public class ResourceAuthenticator implements IAuthenticator {
                 int commentMarker = line.indexOf('#');
                 if (commentMarker != -1) {
                     if (commentMarker == 0) {
-                        // skip its a comment
+                        //skip its a comment
                         continue;
                     } else {
-                        // it's a malformed comment
+                        //it's a malformed comment
                         throw new ParseException(line, commentMarker);
                     }
                 } else {
                     if (line.isEmpty() || line.matches("^\\s*$")) {
-                        // skip it's a black line
+                        //skip it's a black line
                         continue;
                     }
-
-                    // split till the first space
+                    
+                    //split till the first space
                     int delimiterIdx = line.indexOf(':');
                     String username = line.substring(0, delimiterIdx).trim();
                     String password = line.substring(delimiterIdx + 1).trim();
-
+                    
                     m_identities.put(username, password);
                 }
             }
@@ -125,5 +127,5 @@ public class ResourceAuthenticator implements IAuthenticator {
         String encodedPasswd = DigestUtils.sha256Hex(password);
         return foundPwq.equals(encodedPasswd);
     }
-
+    
 }

@@ -1,85 +1,78 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.interception.messages;
 
-import io.netty.handler.codec.mqtt.MqttConnectMessage;
+import io.moquette.parser.proto.messages.ConnectIpPortMessage;
+import io.moquette.parser.proto.messages.ConnectMessage;
 
+/**
+ * @author Wagner Macedo
+ */
 public class InterceptConnectMessage extends InterceptAbstractMessage {
+    private final ConnectMessage msg;
+    private final ConnectIpPortMessage ipPortMessage;
 
-    private final MqttConnectMessage msg;
-
-    public InterceptConnectMessage(MqttConnectMessage msg) {
+    public InterceptConnectMessage(ConnectMessage msg, ConnectIpPortMessage ipPortMessage) {
         super(msg);
         this.msg = msg;
+        this.ipPortMessage = ipPortMessage;
     }
 
     public String getClientID() {
-        return msg.payload().clientIdentifier();
+        return msg.getClientID();
     }
 
     public boolean isCleanSession() {
-        return msg.variableHeader().isCleanSession();
+        return msg.isCleanSession();
     }
 
     public int getKeepAlive() {
-        return msg.variableHeader().keepAliveTimeSeconds();
+        return msg.getKeepAlive();
     }
 
     public boolean isPasswordFlag() {
-        return msg.variableHeader().hasPassword();
+        return msg.isPasswordFlag();
     }
 
     public byte getProtocolVersion() {
-        return (byte) msg.variableHeader().version();
+        return msg.getProtocolVersion();
     }
 
     public String getProtocolName() {
-        return msg.variableHeader().name();
+        return msg.getProtocolName();
     }
 
     public boolean isUserFlag() {
-        return msg.variableHeader().hasUserName();
+        return msg.isUserFlag();
     }
 
     public boolean isWillFlag() {
-        return msg.variableHeader().isWillFlag();
+        return msg.isWillFlag();
     }
 
     public byte getWillQos() {
-        return (byte) msg.variableHeader().willQos();
+        return msg.getWillQos();
     }
 
     public boolean isWillRetain() {
-        return msg.variableHeader().isWillRetain();
+        return msg.isWillRetain();
     }
 
     public String getUsername() {
-        return msg.payload().userName();
+        return msg.getUsername();
     }
 
     public byte[] getPassword() {
-        return msg.payload().password().getBytes();
+        return msg.getPassword();
     }
 
     public String getWillTopic() {
-        return msg.payload().willTopic();
+        return msg.getWillTopic();
     }
 
     public byte[] getWillMessage() {
-        return msg.payload().willMessage().getBytes();
+        return msg.getWillMessage();
+    }
+
+    public ConnectIpPortMessage getIpPortMessage() {
+        return ipPortMessage;
     }
 }

@@ -1,26 +1,12 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.interception.messages;
 
+import io.moquette.parser.proto.messages.AbstractMessage;
 import io.moquette.spi.impl.subscriptions.Subscription;
-import io.netty.handler.codec.mqtt.MqttQoS;
 
-public class InterceptSubscribeMessage implements InterceptMessage {
-
+/**
+ * @author Wagner Macedo
+ */
+public class InterceptSubscribeMessage {
     private final Subscription subscription;
     private final String username;
 
@@ -33,15 +19,15 @@ public class InterceptSubscribeMessage implements InterceptMessage {
         return subscription.getClientId();
     }
 
-    public MqttQoS getRequestedQos() {
+    public AbstractMessage.QOSType getRequestedQos() {
         return subscription.getRequestedQos();
     }
 
     public String getTopicFilter() {
-        return subscription.getTopicFilter().toString();
+        return subscription.getTopicFilter();
     }
 
-    public String getUsername() {
-        return username;
-    }
+	public String getUsername() {
+		return username;
+	}
 }

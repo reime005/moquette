@@ -1,20 +1,5 @@
-/*
- * Copyright (c) 2012-2017 The original author or authors
- * ------------------------------------------------------
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Eclipse Public License v1.0
- * and Apache License v2.0 which accompanies this distribution.
- *
- * The Eclipse Public License is available at
- * http://www.eclipse.org/legal/epl-v10.html
- *
- * The Apache License v2.0 is available at
- * http://www.opensource.org/licenses/apache2.0.php
- *
- * You may elect to redistribute this code under either of these licenses.
- */
-
 package io.moquette.parser.netty.performance;
+
 
 import org.eclipse.jetty.toolchain.perf.PlatformTimer;
 import org.eclipse.paho.client.mqttv3.*;
@@ -42,11 +27,13 @@ class  BenchmarkPublisher {
 
         private final long startedTime;
         private final long numToSend;
+        private final IMqttAsyncClient connection;
         private final CountDownLatch stopLatch;
 
         ExitTopicCallback(long startedTime, long numToSend, IMqttAsyncClient connection, CountDownLatch stopLatch) {
             this.startedTime = startedTime;
             this.numToSend = numToSend;
+            this.connection = connection;
             this.stopLatch = stopLatch;
         }
 
@@ -61,7 +48,7 @@ class  BenchmarkPublisher {
 //                LOG.error("Disconnect error", mex);
 //            }
             double msgPerSec = (numToSend / spentTime) * 1000;
-            LOG.info("PUB: speed {} msg/sec", msgPerSec);
+            LOG.info( "PUB: speed {} msg/sec", msgPerSec);
             this.stopLatch.countDown();
         }
 
@@ -71,15 +58,15 @@ class  BenchmarkPublisher {
         }
     }
 
-    private int qos;
-    private boolean retain;
+    private int qos = 0;
+    private boolean retain = false;
     private final int numToSend;
     private final int messagesPerSecond;
     private final String dialog_id;
     private final IMqttAsyncClient client;
     private CountDownLatch m_latch;
 
-    BenchmarkPublisher(MqttAsyncClient client, int numToSend, int messagesPerSecond, String dialog_id) {
+    public BenchmarkPublisher(MqttAsyncClient client, int numToSend, int messagesPerSecond, String dialog_id) {
         this.client = client;
         this.numToSend = numToSend;
         this.messagesPerSecond = messagesPerSecond;
@@ -104,7 +91,7 @@ class  BenchmarkPublisher {
     }
 
     public void firePublishes() throws MqttException {
-        long pauseMicroseconds = (int) ((1.0 / messagesPerSecond) * 1000 * 1000);
+        long pauseMicroseconds = (int)((1.0 / messagesPerSecond) * 1000 * 1000);
         LOG.info("PUB: Pause over the each message sent {} microsecs", pauseMicroseconds);
 
         LOG.info("PUB: publishing..");
@@ -114,7 +101,7 @@ class  BenchmarkPublisher {
         //initialize the timer
         PlatformTimer timer = PlatformTimer.detect();
         IMqttActionListener pubCallback = new PublishCallback();
-        for (int i = 0; i < numToSend; i++) {
+        for (int i=0; i < numToSend; i++) {
             long nanos = System.nanoTime();
             byte[] message = ("Hello world!!-" + nanos).getBytes();
             this.client.publish("/topic" + dialog_id, message, qos, retain, null, pubCallback);
@@ -126,6 +113,7 @@ class  BenchmarkPublisher {
         byte[] exitMessage = ("Hello world!!-" + nanosExit).getBytes();
         this.client.publish("/exit" + dialog_id, exitMessage, qos, retain, null, exitCallback);
     }
+
 
     public void waitFinish() throws InterruptedException {
         m_latch.await();
